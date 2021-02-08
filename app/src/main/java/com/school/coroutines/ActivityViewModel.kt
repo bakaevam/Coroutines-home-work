@@ -1,8 +1,10 @@
 package com.school.coroutines
 
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.*
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -12,24 +14,27 @@ class ActivityViewModel : ViewModel() {
     val state: LiveData<State>
         get() = _state
 
-    private val callback = object : Callback<List<MainActivity.Adapter.Item>> {
-        override fun onResponse(call: Call<List<MainActivity.Adapter.Item>>, response: Response<List<MainActivity.Adapter.Item>>) {
-            if (response.isSuccessful) {
-                response.body()?.let { _state.value = State.Loaded(it) }
-            }
-        }
-
-        override fun onFailure(call: Call<List<MainActivity.Adapter.Item>>, t: Throwable) {
-            _state.value = State.Loaded(emptyList())
-        }
+    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        Log.v("Error", throwable.message.toString())
     }
+
+    private val scope = CoroutineScope(SupervisorJob() + exceptionHandler)
 
     init {
         refreshData()
     }
 
     private fun refreshData() {
-        Repository.getPosts(callback)
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                val result = Repository.getPosts()
+                if (result.isSuccessful) {
+                    _state.postValue(result.body()?.let { State.Loaded(it) })
+                } else {
+                    _state.postValue(State.Loaded(emptyList()))
+                }
+            }
+        }
     }
 
     fun processAction(action: Action) {
